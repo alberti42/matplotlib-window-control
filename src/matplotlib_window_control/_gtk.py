@@ -1,0 +1,112 @@
+"""GTK backends (gtk3agg, gtk3cairo, gtk4agg, gtk4cairo): Gtk.Window and Gdk.Monitor calls.
+
+GTK 4 has no API for window positions, because Wayland gives clients none.
+GTK 3 has one, which works on X11, Windows and macOS but not on Wayland.
+"""
+
+from __future__ import annotations
+
+from gi.repository import GLib, Gdk, Gtk
+
+from ._base import Frame, NotSupportedError, Screen, WindowControl
+
+GTK4 = Gtk.get_major_version() >= 4
+
+
+def _frame(rect):
+    return Frame(rect.x, rect.y, rect.width, rect.height)
+
+
+def _wayland(display):
+    return "Wayland" in type(display).__name__
+
+
+class GtkWindowControl(WindowControl):
+    backend = "gtk4" if GTK4 else "gtk3"
+
+    def __init__(self, manager, **kwargs):
+        super().__init__(manager, **kwargs)
+        self.window = manager.window
+        self._handlers = []
+
+    def _no_positions(self):
+        return GTK4 or _wayland(self.window.get_display())
+
+    def get_frame(self):
+        win = self.window
+        if GTK4:
+            return Frame(None, None, win.get_width(), win.get_height())
+        gdk_window = win.get_window()
+        if gdk_window is not None:  # The window has been realized.
+            f = _frame(gdk_window.get_frame_extents())
+        else:
+            f = Frame(*win.get_position(), *win.get_size())
+        if self._no_positions():
+            return f._replace(x=None, y=None)
+        return f
+
+    def set_frame(self, x=None, y=None, width=None, height=None):
+        win = self.window
+        if (x is not None or y is not None) and self._no_positions():
+            raise NotSupportedError(
+                "GTK 4 and Wayland do not let clients position windows")
+        if GTK4:
+            if width is not None or height is not None:
+                win.set_default_size(
+                    int(win.get_width() if width is None else width),
+                    int(win.get_height() if height is None else height))
+            return
+        f = self.get_frame()
+        if x is not None or y is not None:
+            # With the default gravity, move() places the outer frame.
+            win.move(int(f.x if x is None else x), int(f.y if y is None else y))
+        if width is not None or height is not None:
+            # resize() sets the size without decorations.
+            w, h = win.get_size()
+            dw, dh = f.width - w, f.height - h
+            win.resize(int((f.width if width is None else width) - dw),
+                       int((f.height if height is None else height) - dh))
+
+    def screens(self):
+        display = self.window.get_display()
+        if GTK4:
+            monitors = display.get_monitors()
+            ms = [monitors.get_item(i) for i in range(monitors.get_n_items())]
+            # GTK 4 has no primary monitor and no work area.
+            return [Screen(m.get_connector() or m.get_model() or "",
+                           _frame(m.get_geometry()), _frame(m.get_geometry()), False)
+                    for m in ms]
+        ms = [display.get_monitor(i) for i in range(display.get_n_monitors())]
+        ms.sort(key=lambda m: not m.is_primary())
+        return [Screen(m.get_model() or "", _frame(m.get_geometry()),
+                       _frame(m.get_workarea()), m.is_primary())
+                for m in ms]
+
+    def get_floating(self):
+        if GTK4:
+            raise NotSupportedError("GTK 4 has no keep-above API")
+        gdk_window = self.window.get_window()
+        return (gdk_window is not None
+                and bool(gdk_window.get_state() & Gdk.WindowState.ABOVE))
+
+    def set_floating(self, floating):
+        if GTK4:
+            raise NotSupportedError("GTK 4 has no keep-above API")
+        self.window.set_keep_above(bool(floating))
+
+    def _changed_later(self, *args):
+        # The frame extents are updated after configure-event; read them later.
+        GLib.idle_add(lambda: self._geometry_changed() and False)
+        return False  # Let GTK and Matplotlib handle the event as usual.
+
+    def _hook(self):
+        signals = (["notify::default-width", "notify::default-height"] if GTK4
+                   else ["configure-event"])
+        self._handlers = [self.window.connect(s, self._changed_later) for s in signals]
+
+    def _unhook(self):
+        for handler in self._handlers:
+            if self.window.handler_is_connected(handler):
+                self.window.disconnect(handler)
+        self._handlers.clear()
+        super()._unhook()
