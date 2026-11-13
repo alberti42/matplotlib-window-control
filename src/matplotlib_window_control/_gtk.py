@@ -58,8 +58,15 @@ class GtkWindowControl(WindowControl):
             return
         f = self.get_frame()
         if x is not None or y is not None:
-            # With the default gravity, move() places the outer frame.
-            win.move(int(f.x if x is None else x), int(f.y if y is None else y))
+            # move() takes the coordinates that get_position() returns, except
+            # on macOS, where move() places the client area but get_position()
+            # returns the outer frame.
+            if "Quartz" in type(win.get_display()).__name__:
+                _, px, py = win.get_window().get_origin()
+            else:
+                px, py = win.get_position()
+            win.move(int((f.x if x is None else x) + px - f.x),
+                     int((f.y if y is None else y) + py - f.y))
         if width is not None or height is not None:
             # resize() sets the size without decorations.
             w, h = win.get_size()
@@ -85,6 +92,10 @@ class GtkWindowControl(WindowControl):
     def get_floating(self):
         if GTK4:
             raise NotSupportedError("GTK 4 has no keep-above API")
+        if "Quartz" in type(self.window.get_display()).__name__:
+            # GDK on macOS applies keep-above but does not report the ABOVE
+            # state; return the value last set.
+            return getattr(self, "_floating", False)
         gdk_window = self.window.get_window()
         return (gdk_window is not None
                 and bool(gdk_window.get_state() & Gdk.WindowState.ABOVE))
@@ -92,7 +103,8 @@ class GtkWindowControl(WindowControl):
     def set_floating(self, floating):
         if GTK4:
             raise NotSupportedError("GTK 4 has no keep-above API")
-        self.window.set_keep_above(bool(floating))
+        self._floating = bool(floating)
+        self.window.set_keep_above(self._floating)
 
     def _changed_later(self, *args):
         # The frame extents are updated after configure-event; read them later.
