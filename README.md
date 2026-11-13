@@ -81,3 +81,8 @@ python -m pytest                       # no windows
 MWC_GUI_TESTS=1 python -m pytest       # opens a window per installed backend
 python tests/gui_check.py qtagg        # one backend, with a line per check
 ```
+
+With Homebrew's GLib 2.90.1, `from gi.repository import GLib` fails with an
+`AssertionError`: its `GLib-2.0.typelib` names `libgobject-2.0.0.dylib` without a
+directory. Run GTK with `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib`;
+`tests/test_gui.py` sets it.
