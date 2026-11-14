@@ -13,6 +13,7 @@ iPad as a second display (Sidecar), with Python 3.13, the Matplotlib fork with
 | `tests/test_displays.py` | EDID decoding, Windows device paths, matching toolkit displays to system displays |
 | `tests/gui_check.py` | every operation on a real window, for one backend |
 | `tests/multi_screen_check.py` | placement and identity on each display; macOS only, two or more displays |
+| `tests/raise_check.py` | `raise_window()` across applications, with and without focus; macOS only |
 
 One manual check was run on 2026-11-14: after switching the primary display from
 the Kuycon to the iPad, `find_screen()` with the identity saved before the switch,
@@ -52,6 +53,8 @@ These cases have not been run. Each row says what could break and how to check i
 | Dragging and resizing with the mouse | end events: one per gesture, and an early end event when the mouse holds still for longer than `end_delay` mid-drag | connect all four events and drag by hand |
 | IPython with `%matplotlib` | windows shown before `set_frame()`; the `plt.ioff()` recipe in the README | run the recipe in IPython |
 | Floating on Linux and Windows | `-topmost`, `STAY_ON_TOP`, `WindowStaysOnTopHint` and `set_keep_above()` there; the Tk `manager.show` wrapper | `tests/gui_check.py` checks the reported state only; check the stacking by eye |
+| `raise_window()` on Linux and Windows | raising above other applications without focus; Windows' foreground restrictions; Wayland's activation protocol; GTK 4 taking focus | put another application's window over the figure, call `raise_window()` and `raise_window(with_focus=True)`, check by eye |
+| GTK on macOS with two windows of the same title | `raise_window()` finds the `NSWindow` by title; with duplicate titles it falls back to the GTK calls, which do not raise above other applications | give two figures the same title and call `raise_window()` |
 
 ### Versions
 

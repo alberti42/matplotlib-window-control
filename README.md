@@ -17,6 +17,8 @@ win.set_frame(x=300)                 # keep y and the size
 win.screens()                        # [Screen(name="Kuycon G32P", frame=..., primary=True, ...), ...]
 win.screen()                         # the display that contains the window center
 win.set_floating(True)               # stay above windows that are not floating
+win.raise_window()                   # bring to the front, without taking focus
+win.raise_window(with_focus=True)    # bring to the front and give it focus
 cid = win.connect("window_move_end", lambda frame: print(frame))
 win.disconnect(cid)
 ```
@@ -129,6 +131,33 @@ and then 0, each time `plt.show()` or `plt.pause()` runs. That clears floating. 
 the first `set_floating(True)`, this package replaces `manager.show` on that figure
 manager with a function that calls the original and then sets `-topmost` to 1 again.
 
+## Raising windows
+
+`raise_window()` brings the window in front of other windows, also of other
+applications, and leaves the keyboard focus where it is. `raise_window(with_focus=True)`
+also makes the application active and gives the window focus.
+
+On macOS, a background application cannot raise its windows above the frontmost
+application with the toolkits' own calls, so every backend calls the `NSWindow`:
+`orderFrontRegardless` without focus, `activateIgnoringOtherApps:` and
+`makeKeyAndOrderFront:` with focus. GTK gives no handle to the `NSWindow`; the package
+finds it by the window title, which Matplotlib sets per figure, when exactly one
+visible window has that title.
+
+Elsewhere the package uses the toolkit's calls, and the platform decides:
+
+- Windows limits which process may take the foreground; it may flash the taskbar
+  button instead.
+- Wayland gives focus only through its activation protocol.
+- GTK 4 has no call that raises without focus; `raise_window()` uses `present()`,
+  which may take focus.
+
+Matplotlib raises a window itself each time `plt.show()` or `plt.pause()` runs, while
+the rcParam `figure.raise_window` is True (the default). The Qt backend also activates
+the window then, so a loop that calls `plt.pause()` takes focus on every call. Set
+`matplotlib.rcParams["figure.raise_window"] = False` to raise windows only when you
+call `raise_window()`.
+
 ## Interactive mode
 
 With interactive mode on (`plt.ion()`, or IPython with `%matplotlib`), Matplotlib
@@ -151,6 +180,7 @@ python -m pytest                       # no windows
 MWC_GUI_TESTS=1 python -m pytest       # opens a window per installed backend
 python tests/gui_check.py qtagg        # one backend, with a line per check
 python tests/multi_screen_check.py qtagg   # macOS with two or more displays
+python tests/raise_check.py qtagg          # macOS: raising across applications
 ```
 
 With Homebrew's GLib 2.90.1, `from gi.repository import GLib` fails with an
