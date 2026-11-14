@@ -144,6 +144,8 @@ fig.show()
 
 ## Tests
 
+`TESTING.md` lists what the tests cover and the cases that have not been tested.
+
 ```bash
 python -m pytest                       # no windows
 MWC_GUI_TESTS=1 python -m pytest       # opens a window per installed backend
