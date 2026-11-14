@@ -145,7 +145,11 @@ class WindowControl:
 
     def _origin(self, screens=None):
         """Return the top-left corner of the primary display, in toolkit coordinates."""
-        for s in self._screens() if screens is None else screens:
+        if screens is None:
+            screens = self._screens()
+            if not any(s.primary for s in screens):  # GTK 4 names none.
+                screens = self._identified_screens()
+        for s in screens:
             if s.primary:
                 return s.frame.x, s.frame.y
         return 0, 0
@@ -184,16 +188,27 @@ class WindowControl:
             y = None if y is None else y + oy
         self._set_frame(x, y, width, height)
 
+    def _identified_screens(self):
+        """Return `_screens` with the identity fields from the operating system."""
+        from ._displays import attach_identity, system_displays
+
+        return attach_identity(self._screens(), system_displays())
+
     def screens(self) -> list[Screen]:
-        """Return the displays known to the toolkit; the primary one first."""
-        screens = self._screens()
+        """Return the displays known to the toolkit; the primary one first.
+
+        The geometry comes from the toolkit; the identity fields come from the
+        operating system, where this package can read them.
+        """
+        screens = self._identified_screens()
         ox, oy = self._origin(screens)
 
         def shifted(f):
             return f._replace(x=f.x - ox, y=f.y - oy)
 
-        return [s._replace(frame=shifted(s.frame), work_area=shifted(s.work_area))
-                for s in screens]
+        screens = [s._replace(frame=shifted(s.frame), work_area=shifted(s.work_area))
+                   for s in screens]
+        return sorted(screens, key=lambda s: not s.primary)
 
     def screen(self) -> Screen | None:
         """Return the display that contains the center of the window.

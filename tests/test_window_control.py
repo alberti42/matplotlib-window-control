@@ -9,8 +9,14 @@ import gc
 
 import pytest
 
-from matplotlib_window_control import EVENTS, Frame, Screen, WindowControl
+from matplotlib_window_control import EVENTS, Frame, Screen, WindowControl, _displays
 from matplotlib_window_control._base import _backend_family
+
+
+@pytest.fixture(autouse=True)
+def no_system_displays(monkeypatch):
+    # Keep the real displays of the machine running the tests out of the fakes.
+    monkeypatch.setattr(_displays, "system_displays", lambda: [])
 
 
 class FakeTimer:

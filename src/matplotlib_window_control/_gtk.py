@@ -89,7 +89,7 @@ class GtkWindowControl(WindowControl):
             monitors = display.get_monitors()
             ms = [monitors.get_item(i) for i in range(monitors.get_n_items())]
             # GTK 4 has no primary monitor and no work area.
-            return [Screen(m.get_connector() or m.get_model() or "",
+            return [Screen(m.get_model() or m.get_connector() or "",
                            _frame(m.get_geometry()), _frame(m.get_geometry()), False)
                     for m in ms]
         # GDK on macOS and on X11 puts (0, 0) at the top-left of the bounding
