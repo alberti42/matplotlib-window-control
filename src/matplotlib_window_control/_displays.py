@@ -256,6 +256,102 @@ def _x11_displays():
     return result
 
 
+# -- Windows -------------------------------------------------------------------
+#
+# Untested on Windows: written from the Win32 documentation. Windows already
+# puts (0, 0) at the top-left of the primary monitor. The system_id is the
+# monitor device path, which contains the EDID manufacturer and product codes
+# and an instance ID that differs per port.
+
+def parse_device_id(device_id):
+    """Split a monitor device path into its hardware ID and instance ID.
+
+    For "\\\\?\\DISPLAY#GKT3225#5&2f0a&0&UID4352#{e6f07b5f-...}" return
+    ("GKT3225", "5&2f0a&0&UID4352", "GKT", 12837), or None.
+    """
+    parts = device_id.split("#")
+    if len(parts) < 3 or len(parts[1]) < 7:
+        return None
+    hardware_id, instance = parts[1], parts[2]
+    try:
+        product = int(hardware_id[3:7], 16)
+    except ValueError:
+        product = None
+    return hardware_id, instance, hardware_id[:3], product
+
+
+def _windows_edid(hardware_id, instance):
+    import winreg
+
+    key = (rf"SYSTEM\CurrentControlSet\Enum\DISPLAY\{hardware_id}\{instance}"
+           r"\Device Parameters")
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key) as k:
+            return bytes(winreg.QueryValueEx(k, "EDID")[0])
+    except OSError:
+        return b""
+
+
+def _windows_displays():
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32")
+
+    class MONITORINFOEXW(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                    ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD),
+                    ("szDevice", wintypes.WCHAR * 32)]
+
+    class DISPLAY_DEVICEW(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("DeviceName", wintypes.WCHAR * 32),
+                    ("DeviceString", wintypes.WCHAR * 128),
+                    ("StateFlags", wintypes.DWORD), ("DeviceID", wintypes.WCHAR * 128),
+                    ("DeviceKey", wintypes.WCHAR * 128)]
+
+    MONITORENUMPROC = ctypes.WINFUNCTYPE(
+        wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT),
+        wintypes.LPARAM)
+    user32.EnumDisplayMonitors.argtypes = [wintypes.HDC, ctypes.c_void_p,
+                                           MONITORENUMPROC, wintypes.LPARAM]
+    user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.c_void_p]
+    user32.EnumDisplayDevicesW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD,
+                                           ctypes.c_void_p, wintypes.DWORD]
+    EDD_GET_DEVICE_INTERFACE_NAME = 1
+    MONITORINFOF_PRIMARY = 1
+
+    def frame(r):
+        return Frame(r.left, r.top, r.right - r.left, r.bottom - r.top)
+
+    infos = []
+
+    def callback(hmonitor, hdc, rect, data):
+        info = MONITORINFOEXW()
+        info.cbSize = ctypes.sizeof(info)
+        if user32.GetMonitorInfoW(hmonitor, ctypes.byref(info)):
+            infos.append((frame(info.rcMonitor), frame(info.rcWork),
+                          bool(info.dwFlags & MONITORINFOF_PRIMARY), info.szDevice))
+        return True
+
+    user32.EnumDisplayMonitors(None, None, MONITORENUMPROC(callback), 0)
+    result = []
+    for f, work_area, primary, device in infos:
+        dd = DISPLAY_DEVICEW()
+        dd.cb = ctypes.sizeof(dd)
+        found = user32.EnumDisplayDevicesW(device, 0, ctypes.byref(dd),
+                                           EDD_GET_DEVICE_INTERFACE_NAME)
+        device_id = dd.DeviceID if found else ""
+        parsed = parse_device_id(device_id)
+        edid = parse_edid(_windows_edid(*parsed[:2])) if parsed else {}
+        result.append(SystemDisplay(Screen(
+            edid.get("name") or (dd.DeviceString if found else "") or device,
+            f, work_area, primary,
+            manufacturer=edid.get("manufacturer") or (parsed[2] if parsed else None),
+            product=edid.get("product") or (parsed[3] if parsed else None),
+            serial=edid.get("serial"), system_id=device_id or device),
+            aliases=(device,)))
+    return result
+
+
 # -- dispatch and matching -----------------------------------------------------
 
 _warned = set()
@@ -270,6 +366,8 @@ def system_displays():
     try:
         if sys.platform == "darwin":
             return _macos_displays()
+        if sys.platform == "win32":
+            return _windows_displays()
         if sys.platform.startswith("linux") and os.environ.get("DISPLAY") \
                 and not os.environ.get("WAYLAND_DISPLAY"):
             return _x11_displays()

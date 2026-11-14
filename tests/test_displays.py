@@ -109,3 +109,15 @@ def test_identical_names_without_other_match_get_no_identity():
 def test_no_system_displays():
     toolkit = [screen("", 0, 0, 100, 100, True)]
     assert attach_identity(toolkit, []) == toolkit
+
+
+# -- Windows device paths ----------------------------------------------------------
+
+def test_parse_device_id():
+    from matplotlib_window_control._displays import parse_device_id
+
+    device_id = (r"\\?\DISPLAY#GKT3225#5&2f0a1c3&0&UID4352#"
+                 "{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}")
+    assert parse_device_id(device_id) == ("GKT3225", "5&2f0a1c3&0&UID4352", "GKT", 12837)
+    assert parse_device_id(r"\\.\DISPLAY1") is None
+    assert parse_device_id("") is None
