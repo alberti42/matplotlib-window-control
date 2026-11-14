@@ -45,6 +45,12 @@ class TkWindowControl(WindowControl):
         if sys.platform == "darwin":
             from ._macos import cocoa_screens
             return cocoa_screens()
+        # Tk has no list of displays; ask the system (X11, Windows), whose
+        # pixels are Tk's pixels there.
+        from ._displays import system_displays
+        displays = system_displays()
+        if displays:
+            return [d.screen for d in displays]
         # Tk reports one screen: on X11 the whole X screen, on Windows the
         # primary display.
         win = self.window
