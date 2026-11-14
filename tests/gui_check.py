@@ -131,5 +131,17 @@ n = len(events)
 plt.close(fig)
 settle(0.3)
 check("no events after close", len(events) == n, events[n:])
+
+# The README's recipe: set the frame before the window is first shown.
+with plt.ioff():
+    fig3 = plt.figure()
+win3 = window_control(fig3)
+target = (300, 200, 600, 450) if positions else (None, None, 600, 450)
+win3.set_frame(*target)
+fig3.show()
+settle()
+check("set_frame before show", close(win3.get_frame(), target), win3.get_frame())
+plt.close(fig3)
+settle(0.3)
 print("failures:", failures)
 sys.exit(1 if failures else 0)
