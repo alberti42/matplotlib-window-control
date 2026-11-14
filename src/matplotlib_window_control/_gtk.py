@@ -36,11 +36,11 @@ class GtkWindowControl(WindowControl):
         win = self.window
         if GTK4:
             return Frame(None, None, win.get_width(), win.get_height())
-        gdk_window = win.get_window()
-        if gdk_window is not None:  # The window has been realized.
-            f = _frame(gdk_window.get_frame_extents())
-        else:
-            f = Frame(*win.get_position(), *win.get_size())
+        # GDK knows the window, and the size of its decorations, only once the
+        # window is realized. show() realizes it; realize() does it without
+        # showing.
+        win.realize()
+        f = _frame(win.get_window().get_frame_extents())
         if self._no_positions():
             return f._replace(x=None, y=None)
         return f
