@@ -85,6 +85,7 @@ class FakeControl(WindowControl):
         self.frame = frame
         self.fake_screens = list(screens)
         self.hook_calls = 0
+        self.raised = []
         self.unhook_calls = 0
 
     def _get_frame(self):
@@ -99,6 +100,9 @@ class FakeControl(WindowControl):
 
     def _screens(self):
         return self.fake_screens
+
+    def _raise_window(self, with_focus):
+        self.raised.append(with_focus)
 
     def _hook(self):
         self.hook_calls += 1
@@ -405,3 +409,13 @@ def test_backend_family_from_base_class(module, family):
     base = type("Base", (), {"__module__": module})
     manager = type("Manager", (base,), {"__module__": "somewhere.else"})()
     assert _backend_family(manager) == family
+
+
+# -- raise_window ------------------------------------------------------------------
+
+def test_raise_window_uses_toolkit_calls_without_nswindow():
+    # Off macOS, and on macOS when no NSWindow is found, the toolkit raises.
+    control = FakeControl()
+    control.raise_window()
+    control.raise_window(with_focus=True)
+    assert control.raised == [False, True]

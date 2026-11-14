@@ -50,3 +50,12 @@ def test_multi_screen(backend):
     if proc.returncode == 2:
         pytest.skip(proc.stdout.strip().splitlines()[-1])
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+@pytest.mark.gui
+@gui
+@pytest.mark.skipif(sys.platform != "darwin", reason="uses Cocoa to check stacking")
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_raise_window(backend):
+    proc = run_script("raise_check.py", backend)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
