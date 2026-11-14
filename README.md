@@ -95,6 +95,7 @@ fig.show()
 python -m pytest                       # no windows
 MWC_GUI_TESTS=1 python -m pytest       # opens a window per installed backend
 python tests/gui_check.py qtagg        # one backend, with a line per check
+python tests/multi_screen_check.py qtagg   # macOS with two or more displays
 ```
 
 With Homebrew's GLib 2.90.1, `from gi.repository import GLib` fails with an
