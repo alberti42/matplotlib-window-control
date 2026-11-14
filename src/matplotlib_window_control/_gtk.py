@@ -21,6 +21,10 @@ def _wayland(display):
     return "Wayland" in type(display).__name__
 
 
+def _quartz(display):
+    return "Quartz" in type(display).__name__
+
+
 class GtkWindowControl(WindowControl):
     backend = "gtk4" if GTK4 else "gtk3"
 
@@ -32,18 +36,35 @@ class GtkWindowControl(WindowControl):
     def _no_positions(self):
         return GTK4 or _wayland(self.window.get_display())
 
+    def _origin(self):
+        """Return the position of the primary monitor in GDK coordinates.
+
+        GDK on macOS puts (0, 0) at the top-left of the bounding box of all
+        monitors; `Frame` puts it at the top-left of the primary monitor.
+        """
+        display = self.window.get_display()
+        if not _quartz(display):
+            return 0, 0
+        g = (display.get_primary_monitor() or display.get_monitor(0)).get_geometry()
+        return g.x, g.y
+
+    def _gdk_frame(self):
+        """Return the outer frame in GDK coordinates."""
+        # GDK knows the window, and the size of its decorations, only once the
+        # window is realized. show() realizes it; realize() does it without
+        # showing.
+        self.window.realize()
+        return _frame(self.window.get_window().get_frame_extents())
+
     def get_frame(self):
         win = self.window
         if GTK4:
             return Frame(None, None, win.get_width(), win.get_height())
-        # GDK knows the window, and the size of its decorations, only once the
-        # window is realized. show() realizes it; realize() does it without
-        # showing.
-        win.realize()
-        f = _frame(win.get_window().get_frame_extents())
+        f = self._gdk_frame()
         if self._no_positions():
             return f._replace(x=None, y=None)
-        return f
+        ox, oy = self._origin()
+        return f._replace(x=f.x - ox, y=f.y - oy)
 
     def set_frame(self, x=None, y=None, width=None, height=None):
         win = self.window
@@ -56,17 +77,19 @@ class GtkWindowControl(WindowControl):
                     int(win.get_width() if width is None else width),
                     int(win.get_height() if height is None else height))
             return
-        f = self.get_frame()
+        f = self._gdk_frame()
         if x is not None or y is not None:
+            ox, oy = self._origin()
+            gx = f.x if x is None else x + ox
+            gy = f.y if y is None else y + oy
             # move() takes the coordinates that get_position() returns, except
             # on macOS, where move() places the client area but get_position()
             # returns the outer frame.
-            if "Quartz" in type(win.get_display()).__name__:
+            if _quartz(win.get_display()):
                 _, px, py = win.get_window().get_origin()
             else:
                 px, py = win.get_position()
-            win.move(int((f.x if x is None else x) + px - f.x),
-                     int((f.y if y is None else y) + py - f.y))
+            win.move(int(gx + px - f.x), int(gy + py - f.y))
         if width is not None or height is not None:
             # resize() sets the size without decorations.
             w, h = win.get_size()
@@ -83,16 +106,21 @@ class GtkWindowControl(WindowControl):
             return [Screen(m.get_connector() or m.get_model() or "",
                            _frame(m.get_geometry()), _frame(m.get_geometry()), False)
                     for m in ms]
+        ox, oy = self._origin()
+
+        def shifted(rect):
+            return Frame(rect.x - ox, rect.y - oy, rect.width, rect.height)
+
         ms = [display.get_monitor(i) for i in range(display.get_n_monitors())]
         ms.sort(key=lambda m: not m.is_primary())
-        return [Screen(m.get_model() or "", _frame(m.get_geometry()),
-                       _frame(m.get_workarea()), m.is_primary())
+        return [Screen(m.get_model() or "", shifted(m.get_geometry()),
+                       shifted(m.get_workarea()), m.is_primary())
                 for m in ms]
 
     def get_floating(self):
         if GTK4:
             raise NotSupportedError("GTK 4 has no keep-above API")
-        if "Quartz" in type(self.window.get_display()).__name__:
+        if _quartz(self.window.get_display()):
             # GDK on macOS applies keep-above but does not report the ABOVE
             # state; return the value last set.
             return getattr(self, "_floating", False)
