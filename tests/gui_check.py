@@ -95,7 +95,41 @@ check("events", expected <= names, sorted(names))
 ends = [e for e in events if e[0].endswith("_end")]
 check("one end event per gesture", len(ends) == len(expected) // 2, ends)
 
+# Each argument of set_frame alone keeps the other three.
+f = win.get_frame()
+single = [("width", f.width - 50), ("height", f.height - 50)]
+if positions:
+    single = [("y", f.y + 25)] + single
+for name, value in single:
+    win.set_frame(**{name: value})
+    settle()
+    f = f._replace(**{name: value})
+    check(f"set_frame {name} only", close(win.get_frame(), f), win.get_frame())
+
+calls = []
+cid = win.connect("window_resize", lambda frame: calls.append(frame))
+win.disconnect(cid)
+win.set_frame(width=f.width + 50)
+settle()
+check("disconnect", calls == [], calls)
+
+# A second figure has its own control, and changing it leaves the first alone.
+fig2 = plt.figure()
+plt.show(block=False)
+settle()
+win2 = window_control(fig2)
+check("second figure, second control", win2 is not win)
+f = win.get_frame()
+win2.set_frame(width=f.width - 100, height=f.height - 100,
+               **({"x": f.x + 100, "y": f.y + 100} if positions else {}))
+settle()
+check("second figure leaves first alone", close(win.get_frame(), f), win.get_frame())
+plt.close(fig2)
+settle(0.3)
+
+n = len(events)
 plt.close(fig)
 settle(0.3)
+check("no events after close", len(events) == n, events[n:])
 print("failures:", failures)
 sys.exit(1 if failures else 0)
