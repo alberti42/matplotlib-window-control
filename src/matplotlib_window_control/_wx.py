@@ -38,6 +38,16 @@ class WxWindowControl(WindowControl):
                        d.IsPrimary())
                 for d in displays]
 
+    def _nswindow(self):
+        import objc
+        # On macOS, GetHandle() is the NSView of the frame's content.
+        return objc.objc_object(c_void_p=int(self.window.GetHandle())).window()
+
+    def _raise_window(self, with_focus):
+        self.window.Raise()
+        if with_focus:
+            self.window.SetFocus()
+
     def get_floating(self):
         return bool(self.window.GetWindowStyleFlag() & wx.STAY_ON_TOP)
 

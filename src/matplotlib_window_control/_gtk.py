@@ -100,6 +100,23 @@ class GtkWindowControl(WindowControl):
                        _frame(m.get_workarea()), m.is_primary())
                 for m in ms]
 
+    def _nswindow(self):
+        # GDK gives no public handle to the NSWindow. Find it by its title,
+        # which Matplotlib sets per figure, if exactly one window has it.
+        from AppKit import NSApplication
+        title = self.window.get_title()
+        matches = [w for w in NSApplication.sharedApplication().windows()
+                   if w.isVisible() and w.title() == title]
+        return matches[0] if title and len(matches) == 1 else None
+
+    def _raise_window(self, with_focus):
+        win = self.window
+        if with_focus or GTK4:
+            win.present()  # GTK 4 has no raise without focus.
+        else:
+            win.realize()
+            win.get_window().raise_()
+
     def get_floating(self):
         if GTK4:
             raise NotSupportedError("GTK 4 has no keep-above API")

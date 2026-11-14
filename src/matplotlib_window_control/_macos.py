@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import objc
 from AppKit import (
+    NSApplication,
     NSFloatingWindowLevel,
     NSNormalWindowLevel,
     NSScreen,
@@ -42,6 +43,22 @@ def cocoa_screens() -> list[Screen]:
     return result
 
 
+def raise_nswindow(nswindow, with_focus):
+    """Bring *nswindow* in front of the windows of all applications.
+
+    A background application cannot raise its windows above the frontmost
+    application with the toolkits' own calls; these Cocoa calls can.
+    """
+    if with_focus:
+        # activateIgnoringOtherApps: is deprecated, but -activate is
+        # cooperative and does not bring a background application forward
+        # when called from code.
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        nswindow.makeKeyAndOrderFront_(None)
+    else:
+        nswindow.orderFrontRegardless()
+
+
 class MacOSWindowControl(WindowControl):
     backend = "macosx"
 
@@ -71,6 +88,9 @@ class MacOSWindowControl(WindowControl):
 
     def _screens(self):
         return cocoa_screens()
+
+    def _nswindow(self):
+        return self.nswindow
 
     def get_floating(self):
         return self.nswindow.level() >= NSFloatingWindowLevel

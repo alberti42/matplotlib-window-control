@@ -80,6 +80,16 @@ class QtWindowControl(WindowControl):
                        s == primary)
                 for s in screens]
 
+    def _nswindow(self):
+        import objc
+        # On macOS, winId() is the NSView of the window's content.
+        return objc.objc_object(c_void_p=int(self.window.winId())).window()
+
+    def _raise_window(self, with_focus):
+        self.window.raise_()
+        if with_focus:
+            self.window.activateWindow()
+
     def get_floating(self):
         return bool(self.window.windowFlags() & _STAYS_ON_TOP)
 

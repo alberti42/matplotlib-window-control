@@ -57,6 +57,32 @@ class TkWindowControl(WindowControl):
         f = Frame(0, 0, win.winfo_screenwidth(), win.winfo_screenheight())
         return [Screen("", f, f, True)]
 
+    def _nswindow(self):
+        import ctypes
+
+        import objc
+        try:
+            get = ctypes.CDLL(None).Tk_MacOSXGetNSWindowForDrawable
+        except (OSError, AttributeError):
+            return None
+        get.restype = ctypes.c_void_p
+        get.argtypes = [ctypes.c_void_p]
+        ptr = get(ctypes.c_void_p(self.window.winfo_id()))
+        return objc.objc_object(c_void_p=ptr) if ptr else None
+
+    def _raise_window(self, with_focus):
+        win = self.window
+        if with_focus:
+            win.lift()
+            win.focus_force()
+        elif getattr(self, "_floating", False):
+            win.lift()
+        else:
+            # lift() alone does not go above other applications on Windows;
+            # setting -topmost and clearing it does, as Matplotlib's show() does.
+            win.wm_attributes("-topmost", 1)
+            win.wm_attributes("-topmost", 0)
+
     def get_floating(self):
         return bool(int(self.window.wm_attributes("-topmost")))
 

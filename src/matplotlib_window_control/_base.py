@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Callable, NamedTuple
 
 from matplotlib import cbook
@@ -234,6 +235,28 @@ class WindowControl:
 
     def set_floating(self, floating: bool) -> None:
         """Make the window stay above windows that are not floating, or undo it."""
+        raise NotImplementedError
+
+    def raise_window(self, *, with_focus: bool = False) -> None:
+        """Bring the window in front of other windows, also of other applications.
+
+        With *with_focus*, also make the application active and give the
+        window keyboard focus. Without it, the window should not take focus;
+        the platform decides in the end (see the README).
+        """
+        nswindow = self._nswindow() if sys.platform == "darwin" else None
+        if nswindow is not None:
+            from ._macos import raise_nswindow
+            raise_nswindow(nswindow, with_focus)
+        else:
+            self._raise_window(with_focus)
+
+    def _nswindow(self):
+        """Return the window's NSWindow on macOS, or None."""
+        return None
+
+    def _raise_window(self, with_focus):
+        """Raise the window with the toolkit's calls."""
         raise NotImplementedError
 
     # -- events -------------------------------------------------------------
