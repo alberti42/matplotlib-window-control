@@ -12,6 +12,10 @@ import sys
 import matplotlib
 
 matplotlib.use(sys.argv[1])
+# Typing while a test window has focus would trigger Matplotlib's shortcuts;
+# "s" opens a save dialog that blocks the check until it times out.
+for key in [k for k in matplotlib.rcParams if k.startswith("keymap.")]:
+    matplotlib.rcParams[key] = []
 import matplotlib.pyplot as plt  # noqa: E402
 from AppKit import NSApplication, NSScreen  # noqa: E402
 
