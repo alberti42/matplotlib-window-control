@@ -89,22 +89,36 @@ class WindowControl:
                 return s.frame.x, s.frame.y
         return 0, 0
 
-    def get_frame(self) -> Frame:
-        """Return the outer frame of the window."""
+    def _corner(self, screen):
+        """Return the point that *x* and *y* are measured from, in toolkit coordinates."""
+        ox, oy = self._origin()
+        if screen is not None:
+            ox, oy = ox + screen.frame.x, oy + screen.frame.y
+        return ox, oy
+
+    def get_frame(self, screen: Screen | None = None) -> Frame:
+        """Return the outer frame of the window.
+
+        With *screen*, a `Screen` from `screens` or `find_screen`, *x* and *y*
+        are measured from the top-left corner of that display.
+        """
         f = self._get_frame()
         if f.x is None:
             return f
-        ox, oy = self._origin()
+        ox, oy = self._corner(screen)
         return f._replace(x=f.x - ox, y=f.y - oy)
 
-    def set_frame(self, x=None, y=None, width=None, height=None) -> None:
+    def set_frame(self, x=None, y=None, width=None, height=None, *,
+                  screen: Screen | None = None) -> None:
         """Move and/or resize the window so that its outer frame is the given one.
 
         Pass None for *x* and *y* to keep the position, or for *width* and
-        *height* to keep the size.
+        *height* to keep the size. With *screen*, a `Screen` from `screens` or
+        `find_screen`, *x* and *y* are measured from the top-left corner of
+        that display.
         """
         if x is not None or y is not None:
-            ox, oy = self._origin()
+            ox, oy = self._corner(screen)
             x = None if x is None else x + ox
             y = None if y is None else y + oy
         self._set_frame(x, y, width, height)

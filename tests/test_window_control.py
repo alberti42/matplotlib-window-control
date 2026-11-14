@@ -191,6 +191,30 @@ def test_no_primary_display_means_no_shift():
     assert control.get_frame() == Frame(1348, 91, 700, 500)
 
 
+def test_get_frame_relative_to_screen():
+    control = FakeControl(frame=Frame(60, 60, 700, 500), screens=GDK_SCREENS)
+    left = next(s for s in control.screens() if s.name == "left")
+    assert control.get_frame(screen=left) == Frame(60, 60, 700, 500)
+    primary = control.screens()[0]
+    assert control.get_frame(screen=primary) == Frame(-1228, 60, 700, 500)
+
+
+def test_set_frame_relative_to_screen():
+    control = FakeControl(frame=Frame(1348, 91, 700, 500), screens=GDK_SCREENS)
+    left = next(s for s in control.screens() if s.name == "left")
+    control.set_frame(100, 50, screen=left)
+    assert control.frame == Frame(100, 50, 700, 500)
+    assert control.get_frame(screen=left) == Frame(100, 50, 700, 500)
+    control.set_frame(y=80, screen=left)  # x stays as it is.
+    assert control.frame == Frame(100, 80, 700, 500)
+
+
+def test_frame_relative_to_screen_without_positions():
+    control = FakeControl(frame=Frame(None, None, 700, 500), screens=GDK_SCREENS)
+    left = next(s for s in control.screens() if s.name == "left")
+    assert control.get_frame(screen=left) == Frame(None, None, 700, 500)
+
+
 def test_screen_with_shifted_coordinates():
     control = FakeControl(frame=Frame(60, 60, 700, 500), screens=GDK_SCREENS)
     assert control.screen().name == "left"
