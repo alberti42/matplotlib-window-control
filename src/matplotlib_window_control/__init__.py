@@ -20,6 +20,7 @@ from ._base import (
     Screen,
     UnsupportedBackendError,
     WindowControl,
+    find_screen,
     window_control,
 )
 
@@ -30,6 +31,7 @@ __all__ = [
     "Screen",
     "UnsupportedBackendError",
     "WindowControl",
+    "find_screen",
     "window_control",
 ]
 __version__ = "0.1.0"

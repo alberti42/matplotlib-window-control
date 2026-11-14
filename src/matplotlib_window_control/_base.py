@@ -27,12 +27,73 @@ class Frame(NamedTuple):
 
 
 class Screen(NamedTuple):
-    """A display, as reported by the toolkit."""
+    """A display: its geometry from the toolkit, its identity from the system.
+
+    The identity fields are None when the system does not report them. Use
+    `find_screen` to find a saved display among the attached ones.
+    """
 
     name: str
     frame: Frame
     work_area: Frame  # The frame without menu bar, dock or task bar.
     primary: bool
+    # The three-letter manufacturer code from the monitor's EDID, e.g. "GKT".
+    manufacturer: str | None = None
+    # The product code from the monitor's EDID.
+    product: int | None = None
+    # The serial number from the monitor's EDID; many monitors report none.
+    serial: str | None = None
+    # The system's identifier for the display: the display UUID on macOS, the
+    # output (connector) name on X11, e.g. "DP-1", and the monitor device path
+    # on Windows. It tells identical monitors without serial numbers apart.
+    system_id: str | None = None
+
+
+_IDENTITY = ("name", "manufacturer", "product", "serial", "system_id")
+
+
+def find_screen(saved, screens):
+    """Return the display in *screens* that is the monitor *saved*, or None.
+
+    *saved* is a `Screen`, or a mapping with its identity fields, such as
+    ``screen._asdict()`` stored as JSON. The first rule that matches exactly
+    one display decides:
+
+    1. Same manufacturer, product and serial number.
+    2. Same manufacturer, product and `Screen.system_id`, for monitors without
+       serial numbers: the same model on the same port.
+    3. Same manufacturer and product, if one such display is attached.
+    4. Same name, if one such display is attached.
+
+    A display of the same model with a different serial number is a different
+    monitor; no rule matches it. Return None if no rule matches exactly one
+    display.
+    """
+    if isinstance(saved, Screen):
+        want = {k: getattr(saved, k) for k in _IDENTITY}
+    else:
+        want = {k: saved.get(k) for k in _IDENTITY}
+    model = (want["manufacturer"], want["product"])
+    candidates = [s for s in screens
+                  if not (want["serial"] and s.serial and s.serial != want["serial"])]
+
+    def same_model(s):
+        return (s.manufacturer, s.product) == model
+
+    rules = []
+    if want["serial"]:
+        rules.append(lambda s: same_model(s) and s.serial == want["serial"])
+    if want["system_id"]:
+        rules.append(lambda s: same_model(s) and s.system_id == want["system_id"])
+    if model != (None, None):
+        rules.append(same_model)
+    if want["name"]:
+        rules.append(lambda s: s.name == want["name"])
+    for rule in rules:
+        found = [s for s in candidates if rule(s)]
+        if len(found) == 1:
+            return found[0]
+    return None
 
 
 class UnsupportedBackendError(TypeError):
