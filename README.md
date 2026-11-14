@@ -54,7 +54,22 @@ Each callback receives the window's `Frame` after the change.
 Where the toolkit cannot report a position, `Frame.x` and `Frame.y` are None, and
 setting a position raises `NotSupportedError`.
 
-## Floating Tk windows
+## Floating windows
+
+A floating window stays above windows that are not floating. Each toolkit picks its
+own window level for floating, so floating windows of different backends do not
+stack as equals. On macOS, the `NSWindow` levels are:
+
+| Backend | Level |
+|---|---|
+| GTK 3 | 1 |
+| macosx | 3 |
+| Qt, wx | 8 |
+| Tk | 19 |
+
+A floating Tk window stays above a floating macosx window.
+
+### Tk
 
 Matplotlib's Tk backend raises a window by setting the Tk attribute `-topmost` to 1
 and then 0, each time `plt.show()` or `plt.pause()` runs. That clears floating. After
