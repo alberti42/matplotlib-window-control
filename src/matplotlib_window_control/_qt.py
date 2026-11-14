@@ -46,7 +46,13 @@ class QtWindowControl(WindowControl):
     def _wayland(self):
         return QtGui.QGuiApplication.platformName() == "wayland"
 
+    def _create_native_window(self):
+        # Qt knows the size of the window decorations only once the native
+        # window exists. show() creates it; winId() creates it without showing.
+        self.window.winId()
+
     def get_frame(self):
+        self._create_native_window()
         f = _frame(self.window.frameGeometry())
         if self._wayland():  # Qt reports (0, 0) on Wayland.
             return f._replace(x=None, y=None)
@@ -54,14 +60,14 @@ class QtWindowControl(WindowControl):
 
     def set_frame(self, x=None, y=None, width=None, height=None):
         win = self.window
+        self._create_native_window()
         if x is not None or y is not None:
             if self._wayland():
                 raise NotSupportedError("Wayland does not let clients position windows")
             f = win.frameGeometry()
             win.move(int(f.x() if x is None else x), int(f.y() if y is None else y))
         if width is not None or height is not None:
-            # resize() sets the size without decorations; the decorations are
-            # known only once the window has been shown.
+            # resize() sets the size without decorations.
             fg, g = win.frameGeometry(), win.geometry()
             dw, dh = fg.width() - g.width(), fg.height() - g.height()
             win.resize(int((fg.width() if width is None else width) - dw),
