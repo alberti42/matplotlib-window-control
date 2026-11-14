@@ -9,6 +9,7 @@ copies them onto the toolkit's `Screen` objects.
 from __future__ import annotations
 
 import ctypes
+import os
 import struct
 import sys
 import warnings
@@ -107,6 +108,154 @@ def _macos_displays():
     return result
 
 
+# -- X11 -----------------------------------------------------------------------
+#
+# Untested on Linux: written from the Xlib and XRandR headers. X11 puts (0, 0)
+# at the top-left of the bounding box of all outputs; the frames here are
+# moved so that the primary output starts at (0, 0). The system_id is the
+# output (connector) name, e.g. "DP-1".
+
+class _XRRScreenResources(ctypes.Structure):
+    _fields_ = [("timestamp", ctypes.c_ulong), ("configTimestamp", ctypes.c_ulong),
+                ("ncrtc", ctypes.c_int), ("crtcs", ctypes.POINTER(ctypes.c_ulong)),
+                ("noutput", ctypes.c_int), ("outputs", ctypes.POINTER(ctypes.c_ulong)),
+                ("nmode", ctypes.c_int), ("modes", ctypes.c_void_p)]
+
+
+class _XRROutputInfo(ctypes.Structure):
+    _fields_ = [("timestamp", ctypes.c_ulong), ("crtc", ctypes.c_ulong),
+                ("name", ctypes.c_char_p), ("nameLen", ctypes.c_int),
+                ("mm_width", ctypes.c_ulong), ("mm_height", ctypes.c_ulong),
+                ("connection", ctypes.c_ushort), ("subpixel_order", ctypes.c_ushort),
+                ("ncrtc", ctypes.c_int), ("crtcs", ctypes.POINTER(ctypes.c_ulong)),
+                ("nclone", ctypes.c_int), ("clones", ctypes.POINTER(ctypes.c_ulong)),
+                ("nmode", ctypes.c_int), ("npreferred", ctypes.c_int),
+                ("modes", ctypes.POINTER(ctypes.c_ulong))]
+
+
+class _XRRCrtcInfo(ctypes.Structure):
+    _fields_ = [("timestamp", ctypes.c_ulong), ("x", ctypes.c_int), ("y", ctypes.c_int),
+                ("width", ctypes.c_uint), ("height", ctypes.c_uint),
+                ("mode", ctypes.c_ulong), ("rotation", ctypes.c_ushort),
+                ("noutput", ctypes.c_int), ("outputs", ctypes.POINTER(ctypes.c_ulong)),
+                ("rotations", ctypes.c_ushort), ("npossible", ctypes.c_int),
+                ("possible", ctypes.POINTER(ctypes.c_ulong))]
+
+
+def _x11_libraries():
+    import ctypes.util
+
+    paths = {"X11": ctypes.util.find_library("X11"),
+             "Xrandr": ctypes.util.find_library("Xrandr")}
+    if sys.platform == "darwin":  # XQuartz, for running this code on macOS.
+        paths = {"X11": "/opt/X11/lib/libX11.dylib",
+                 "Xrandr": "/opt/X11/lib/libXrandr.dylib"}
+    if not all(paths.values()):
+        raise OSError("libX11 or libXrandr not found")
+    x11, xrandr = ctypes.CDLL(paths["X11"]), ctypes.CDLL(paths["Xrandr"])
+    p, ulong = ctypes.c_void_p, ctypes.c_ulong
+    x11.XOpenDisplay.restype = p
+    x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    x11.XCloseDisplay.argtypes = [p]
+    x11.XDefaultRootWindow.restype = ulong
+    x11.XDefaultRootWindow.argtypes = [p]
+    x11.XInternAtom.restype = ulong
+    x11.XInternAtom.argtypes = [p, ctypes.c_char_p, ctypes.c_int]
+    x11.XFree.argtypes = [p]
+    xrandr.XRRGetScreenResourcesCurrent.restype = ctypes.POINTER(_XRRScreenResources)
+    xrandr.XRRGetScreenResourcesCurrent.argtypes = [p, ulong]
+    xrandr.XRRFreeScreenResources.argtypes = [p]
+    xrandr.XRRGetOutputInfo.restype = ctypes.POINTER(_XRROutputInfo)
+    xrandr.XRRGetOutputInfo.argtypes = [p, p, ulong]
+    xrandr.XRRFreeOutputInfo.argtypes = [p]
+    xrandr.XRRGetCrtcInfo.restype = ctypes.POINTER(_XRRCrtcInfo)
+    xrandr.XRRGetCrtcInfo.argtypes = [p, p, ulong]
+    xrandr.XRRFreeCrtcInfo.argtypes = [p]
+    xrandr.XRRGetOutputPrimary.restype = ulong
+    xrandr.XRRGetOutputPrimary.argtypes = [p, ulong]
+    xrandr.XRRGetOutputProperty.restype = ctypes.c_int
+    xrandr.XRRGetOutputProperty.argtypes = [
+        p, ulong, ulong, ctypes.c_long, ctypes.c_long, ctypes.c_int, ctypes.c_int,
+        ulong, ctypes.POINTER(ulong), ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ulong), ctypes.POINTER(ulong),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte))]
+    return x11, xrandr
+
+
+def _x11_edid(x11, xrandr, display, output, atom):
+    if not atom:
+        return b""
+    actual_type, nitems, after = ctypes.c_ulong(), ctypes.c_ulong(), ctypes.c_ulong()
+    actual_format = ctypes.c_int()
+    data = ctypes.POINTER(ctypes.c_ubyte)()
+    # Length is in 32-bit units: 128 of them hold 512 bytes, enough for an
+    # EDID base block and three extension blocks.
+    status = xrandr.XRRGetOutputProperty(
+        display, output, atom, 0, 128, False, False, 0, ctypes.byref(actual_type),
+        ctypes.byref(actual_format), ctypes.byref(nitems), ctypes.byref(after),
+        ctypes.byref(data))
+    if status != 0 or not data:
+        return b""
+    try:
+        return bytes(data[:nitems.value]) if actual_format.value == 8 else b""
+    finally:
+        x11.XFree(data)
+
+
+def _x11_displays():
+    x11, xrandr = _x11_libraries()
+    display = x11.XOpenDisplay(None)
+    if not display:
+        raise OSError("cannot open the X display")
+    try:
+        root = x11.XDefaultRootWindow(display)
+        resources = xrandr.XRRGetScreenResourcesCurrent(display, root)
+        if not resources:
+            raise OSError("XRRGetScreenResourcesCurrent failed")
+        edid_atom = x11.XInternAtom(display, b"EDID", True)
+        primary_output = xrandr.XRRGetOutputPrimary(display, root)
+        outputs = []
+        try:
+            res = resources.contents
+            for i in range(res.noutput):
+                output = res.outputs[i]
+                info = xrandr.XRRGetOutputInfo(display, resources, output)
+                if not info:
+                    continue
+                try:
+                    o = info.contents
+                    if o.connection != 0 or not o.crtc:  # Not connected or off.
+                        continue
+                    crtc = xrandr.XRRGetCrtcInfo(display, resources, o.crtc)
+                    if not crtc:
+                        continue
+                    c = crtc.contents
+                    frame = Frame(c.x, c.y, c.width, c.height)
+                    xrandr.XRRFreeCrtcInfo(crtc)
+                    name = o.name.decode(errors="replace")
+                    edid = parse_edid(_x11_edid(x11, xrandr, display, output, edid_atom))
+                    outputs.append((output == primary_output, name, frame, edid))
+                finally:
+                    xrandr.XRRFreeOutputInfo(info)
+        finally:
+            xrandr.XRRFreeScreenResources(resources)
+    finally:
+        x11.XCloseDisplay(display)
+    if not outputs:
+        return []
+    if not any(primary for primary, *_ in outputs):  # No primary set: X picks
+        outputs[0] = (True, *outputs[0][1:])          # the first output.
+    ox, oy = next(f[:2] for primary, _, f, _ in outputs if primary)
+    result = []
+    for primary, name, f, edid in outputs:
+        f = Frame(f.x - ox, f.y - oy, f.width, f.height)
+        result.append(SystemDisplay(Screen(
+            edid.get("name") or name, f, f, primary,
+            manufacturer=edid.get("manufacturer"), product=edid.get("product"),
+            serial=edid.get("serial"), system_id=name), aliases=(name,)))
+    return result
+
+
 # -- dispatch and matching -----------------------------------------------------
 
 _warned = set()
@@ -121,6 +270,9 @@ def system_displays():
     try:
         if sys.platform == "darwin":
             return _macos_displays()
+        if sys.platform.startswith("linux") and os.environ.get("DISPLAY") \
+                and not os.environ.get("WAYLAND_DISPLAY"):
+            return _x11_displays()
     except Exception as e:  # noqa: BLE001 - system-specific, best effort.
         if sys.platform not in _warned:
             _warned.add(sys.platform)
