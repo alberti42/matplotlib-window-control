@@ -29,11 +29,11 @@ class TkWindowControl(WindowControl):
         title = max(win.winfo_rooty() - y, 0)
         return w, h, x, y, border, title
 
-    def get_frame(self):
+    def _get_frame(self):
         w, h, x, y, border, title = self._geometry()
         return Frame(x, y, w + 2 * border, h + title + border)
 
-    def set_frame(self, x=None, y=None, width=None, height=None):
+    def _set_frame(self, x, y, width, height):
         w, h, x0, y0, border, title = self._geometry()
         x = x0 if x is None else int(x)
         y = y0 if y is None else int(y)
@@ -41,7 +41,7 @@ class TkWindowControl(WindowControl):
         h = h if height is None else int(height) - title - border
         self.window.wm_geometry(f"{w}x{h}+{x}+{y}")
 
-    def screens(self):
+    def _screens(self):
         if sys.platform == "darwin":
             from ._macos import cocoa_screens
             return cocoa_screens()

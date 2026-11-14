@@ -18,11 +18,11 @@ class WxWindowControl(WindowControl):
         super().__init__(manager, **kwargs)
         self.window = manager.frame
 
-    def get_frame(self):
+    def _get_frame(self):
         return _frame(self.window.GetRect())  # The outer frame on all platforms.
 
-    def set_frame(self, x=None, y=None, width=None, height=None):
-        f = self.get_frame()
+    def _set_frame(self, x, y, width, height):
+        f = self._get_frame()
         if x is not None or y is not None:
             # SetPosition accepts -1 as a coordinate; Move treats it as "unchanged".
             self.window.SetPosition(wx.Point(int(f.x if x is None else x),
@@ -31,7 +31,7 @@ class WxWindowControl(WindowControl):
             self.window.SetSize(wx.Size(int(f.width if width is None else width),
                                         int(f.height if height is None else height)))
 
-    def screens(self):
+    def _screens(self):
         displays = [wx.Display(i) for i in range(wx.Display.GetCount())]
         displays.sort(key=lambda d: not d.IsPrimary())
         return [Screen(d.GetName(), _frame(d.GetGeometry()), _frame(d.GetClientArea()),

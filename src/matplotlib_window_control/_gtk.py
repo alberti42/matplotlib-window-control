@@ -36,18 +36,6 @@ class GtkWindowControl(WindowControl):
     def _no_positions(self):
         return GTK4 or _wayland(self.window.get_display())
 
-    def _origin(self):
-        """Return the position of the primary monitor in GDK coordinates.
-
-        GDK on macOS puts (0, 0) at the top-left of the bounding box of all
-        monitors; `Frame` puts it at the top-left of the primary monitor.
-        """
-        display = self.window.get_display()
-        if not _quartz(display):
-            return 0, 0
-        g = (display.get_primary_monitor() or display.get_monitor(0)).get_geometry()
-        return g.x, g.y
-
     def _gdk_frame(self):
         """Return the outer frame in GDK coordinates."""
         # GDK knows the window, and the size of its decorations, only once the
@@ -56,17 +44,16 @@ class GtkWindowControl(WindowControl):
         self.window.realize()
         return _frame(self.window.get_window().get_frame_extents())
 
-    def get_frame(self):
+    def _get_frame(self):
         win = self.window
         if GTK4:
             return Frame(None, None, win.get_width(), win.get_height())
         f = self._gdk_frame()
         if self._no_positions():
             return f._replace(x=None, y=None)
-        ox, oy = self._origin()
-        return f._replace(x=f.x - ox, y=f.y - oy)
+        return f
 
-    def set_frame(self, x=None, y=None, width=None, height=None):
+    def _set_frame(self, x, y, width, height):
         win = self.window
         if (x is not None or y is not None) and self._no_positions():
             raise NotSupportedError(
@@ -79,9 +66,8 @@ class GtkWindowControl(WindowControl):
             return
         f = self._gdk_frame()
         if x is not None or y is not None:
-            ox, oy = self._origin()
-            gx = f.x if x is None else x + ox
-            gy = f.y if y is None else y + oy
+            gx = f.x if x is None else x
+            gy = f.y if y is None else y
             # move() takes the coordinates that get_position() returns, except
             # on macOS, where move() places the client area but get_position()
             # returns the outer frame.
@@ -97,7 +83,7 @@ class GtkWindowControl(WindowControl):
             win.resize(int((f.width if width is None else width) - dw),
                        int((f.height if height is None else height) - dh))
 
-    def screens(self):
+    def _screens(self):
         display = self.window.get_display()
         if GTK4:
             monitors = display.get_monitors()
@@ -106,15 +92,12 @@ class GtkWindowControl(WindowControl):
             return [Screen(m.get_connector() or m.get_model() or "",
                            _frame(m.get_geometry()), _frame(m.get_geometry()), False)
                     for m in ms]
-        ox, oy = self._origin()
-
-        def shifted(rect):
-            return Frame(rect.x - ox, rect.y - oy, rect.width, rect.height)
-
+        # GDK on macOS and on X11 puts (0, 0) at the top-left of the bounding
+        # box of all monitors; the base class shifts to the primary monitor.
         ms = [display.get_monitor(i) for i in range(display.get_n_monitors())]
         ms.sort(key=lambda m: not m.is_primary())
-        return [Screen(m.get_model() or "", shifted(m.get_geometry()),
-                       shifted(m.get_workarea()), m.is_primary())
+        return [Screen(m.get_model() or "", _frame(m.get_geometry()),
+                       _frame(m.get_workarea()), m.is_primary())
                 for m in ms]
 
     def get_floating(self):

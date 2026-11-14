@@ -57,11 +57,11 @@ class MacOSWindowControl(WindowControl):
         self.nswindow = objc.objc_object(c_void_p=ptr)
         self._observers = []
 
-    def get_frame(self):
+    def _get_frame(self):
         return _to_frame(self.nswindow.frame(), _primary_height())
 
-    def set_frame(self, x=None, y=None, width=None, height=None):
-        f = self.get_frame()
+    def _set_frame(self, x, y, width, height):
+        f = self._get_frame()
         x = f.x if x is None else x
         y = f.y if y is None else y
         width = f.width if width is None else width
@@ -69,7 +69,7 @@ class MacOSWindowControl(WindowControl):
         self.nswindow.setFrame_display_(
             ((x, _primary_height() - (y + height)), (width, height)), True)
 
-    def screens(self):
+    def _screens(self):
         return cocoa_screens()
 
     def get_floating(self):

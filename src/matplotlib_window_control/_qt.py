@@ -51,14 +51,14 @@ class QtWindowControl(WindowControl):
         # window exists. show() creates it; winId() creates it without showing.
         self.window.winId()
 
-    def get_frame(self):
+    def _get_frame(self):
         self._create_native_window()
         f = _frame(self.window.frameGeometry())
         if self._wayland():  # Qt reports (0, 0) on Wayland.
             return f._replace(x=None, y=None)
         return f
 
-    def set_frame(self, x=None, y=None, width=None, height=None):
+    def _set_frame(self, x, y, width, height):
         win = self.window
         self._create_native_window()
         if x is not None or y is not None:
@@ -73,7 +73,7 @@ class QtWindowControl(WindowControl):
             win.resize(int((fg.width() if width is None else width) - dw),
                        int((fg.height() if height is None else height) - dh))
 
-    def screens(self):
+    def _screens(self):
         primary = QtGui.QGuiApplication.primaryScreen()
         screens = sorted(QtGui.QGuiApplication.screens(), key=lambda s: s != primary)
         return [Screen(s.name(), _frame(s.geometry()), _frame(s.availableGeometry()),

@@ -1,7 +1,7 @@
 """Tests of the backend-independent logic in _base.py, with a fake backend.
 
-FakeControl keeps its frame in memory and calls _geometry_changed() when the
-frame changes, as the toolkit hooks do. FakeCanvas records close_event
+FakeControl keeps its frame in memory, in toolkit coordinates, and calls
+_geometry_changed() when the frame changes, as the toolkit hooks do. FakeCanvas records close_event
 callbacks and hands out FakeTimers, which count down only when a test calls advance().
 """
 
@@ -81,17 +81,17 @@ class FakeControl(WindowControl):
         self.hook_calls = 0
         self.unhook_calls = 0
 
-    def get_frame(self):
+    def _get_frame(self):
         return self.frame
 
-    def set_frame(self, x=None, y=None, width=None, height=None):
+    def _set_frame(self, x, y, width, height):
         f = self.frame
         self.frame = Frame(f.x if x is None else x, f.y if y is None else y,
                            f.width if width is None else width,
                            f.height if height is None else height)
         self._geometry_changed()
 
-    def screens(self):
+    def _screens(self):
         return self.fake_screens
 
     def _hook(self):
@@ -158,6 +158,42 @@ def test_screen_edges_are_half_open():
 def test_screen_none_without_positions():
     control = FakeControl(frame=Frame(None, None, 800, 600), screens=SCREENS)
     assert control.screen() is None
+
+
+# -- origin -------------------------------------------------------------------
+
+# Toolkit coordinates as GDK reports them on macOS for a 1288-point-wide
+# display left of the primary one: (0, 0) is the corner of the bounding box.
+GDK_SCREENS = [
+    screen("primary", 1288, 0, 3072, 1728, primary=True),
+    screen("left", 0, 0, 1288, 1024),
+]
+
+
+def test_frames_measured_from_primary_display():
+    control = FakeControl(frame=Frame(1348, 91, 700, 500), screens=GDK_SCREENS)
+    assert control.get_frame() == Frame(60, 91, 700, 500)
+    assert [s.frame for s in control.screens()] == [
+        Frame(0, 0, 3072, 1728), Frame(-1288, 0, 1288, 1024)]
+
+
+def test_set_frame_converts_to_toolkit_coordinates():
+    control = FakeControl(frame=Frame(1348, 91, 700, 500), screens=GDK_SCREENS)
+    control.set_frame(-1228, 60)
+    assert control.frame == Frame(60, 60, 700, 500)  # On the left display.
+    control.set_frame(x=100)  # y stays as it is, in toolkit coordinates.
+    assert control.frame == Frame(1388, 60, 700, 500)
+
+
+def test_no_primary_display_means_no_shift():
+    screens = [s._replace(primary=False) for s in GDK_SCREENS]
+    control = FakeControl(frame=Frame(1348, 91, 700, 500), screens=screens)
+    assert control.get_frame() == Frame(1348, 91, 700, 500)
+
+
+def test_screen_with_shifted_coordinates():
+    control = FakeControl(frame=Frame(60, 60, 700, 500), screens=GDK_SCREENS)
+    assert control.screen().name == "left"
 
 
 # -- live events ---------------------------------------------------------------

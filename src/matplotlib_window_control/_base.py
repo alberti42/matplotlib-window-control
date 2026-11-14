@@ -63,10 +63,39 @@ class WindowControl:
         manager.canvas.mpl_connect("close_event", lambda event: self._unhook())
 
     # -- geometry -----------------------------------------------------------
+    #
+    # Backend modules implement _get_frame, _set_frame and _screens in the
+    # toolkit's own coordinates. The public methods shift them so that (0, 0)
+    # is the top-left corner of the primary display: toolkits differ there
+    # (GDK on macOS and X11 put it at the corner of the bounding box of all
+    # displays).
+
+    def _get_frame(self) -> Frame:
+        """Return the outer frame of the window, in toolkit coordinates."""
+        raise NotImplementedError
+
+    def _set_frame(self, x, y, width, height) -> None:
+        """Set the outer frame, in toolkit coordinates; None keeps a value."""
+        raise NotImplementedError
+
+    def _screens(self) -> list[Screen]:
+        """Return the displays, in toolkit coordinates."""
+        raise NotImplementedError
+
+    def _origin(self, screens=None):
+        """Return the top-left corner of the primary display, in toolkit coordinates."""
+        for s in self._screens() if screens is None else screens:
+            if s.primary:
+                return s.frame.x, s.frame.y
+        return 0, 0
 
     def get_frame(self) -> Frame:
         """Return the outer frame of the window."""
-        raise NotImplementedError
+        f = self._get_frame()
+        if f.x is None:
+            return f
+        ox, oy = self._origin()
+        return f._replace(x=f.x - ox, y=f.y - oy)
 
     def set_frame(self, x=None, y=None, width=None, height=None) -> None:
         """Move and/or resize the window so that its outer frame is the given one.
@@ -74,11 +103,22 @@ class WindowControl:
         Pass None for *x* and *y* to keep the position, or for *width* and
         *height* to keep the size.
         """
-        raise NotImplementedError
+        if x is not None or y is not None:
+            ox, oy = self._origin()
+            x = None if x is None else x + ox
+            y = None if y is None else y + oy
+        self._set_frame(x, y, width, height)
 
     def screens(self) -> list[Screen]:
         """Return the displays known to the toolkit; the primary one first."""
-        raise NotImplementedError
+        screens = self._screens()
+        ox, oy = self._origin(screens)
+
+        def shifted(f):
+            return f._replace(x=f.x - ox, y=f.y - oy)
+
+        return [s._replace(frame=shifted(s.frame), work_area=shifted(s.work_area))
+                for s in screens]
 
     def screen(self) -> Screen | None:
         """Return the display that contains the center of the window.
