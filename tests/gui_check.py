@@ -23,6 +23,23 @@ def close(a, b):
     return all(p is None or q is None or abs(p - q) <= TOL for p, q in zip(a, b))
 
 
+def native_level(frame):
+    """Return the level of the visible NSWindow with this frame (macOS), or None.
+
+    Every toolkit on macOS draws into an NSWindow; find it by its frame,
+    converted to top-left coordinates.
+    """
+    if sys.platform != "darwin" or frame.x is None:
+        return None
+    from AppKit import NSApplication, NSScreen
+    primary_height = NSScreen.screens()[0].frame().size.height
+    for nswindow in NSApplication.sharedApplication().windows():
+        (x, y), (w, h) = nswindow.frame()
+        if nswindow.isVisible() and close((x, primary_height - (y + h), w, h), frame):
+            return nswindow.level()
+    return None
+
+
 def check(name, ok, detail=""):
     print(f"{'PASS' if ok else 'FAIL'} {name} {detail}")
     if not ok:
@@ -71,11 +88,16 @@ if positions:
 try:
     win.set_floating(True)
     settle(0.3)
-    on = win.get_floating()
+    on, level_on = win.get_floating(), native_level(win.get_frame())
     win.set_floating(False)
     settle(0.3)
-    off = win.get_floating()
+    off, level_off = win.get_floating(), native_level(win.get_frame())
     check("floating round trip", on and not off, (on, off))
+    if sys.platform == "darwin":
+        # get_floating() can only report what the toolkit reports; the
+        # NSWindow level is what decides the stacking.
+        check("floating NSWindow level", level_on and level_on > 0 and level_off == 0,
+              (level_on, level_off))
 except NotSupportedError as e:
     print("SKIP floating:", e)
 
