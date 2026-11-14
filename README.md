@@ -14,7 +14,7 @@ win = window_control(fig)
 win.get_frame()                      # Frame(x=100, y=150, width=640, height=572)
 win.set_frame(200, 150, 800, 600)    # x, y, width, height
 win.set_frame(x=300)                 # keep y and the size
-win.screens()                        # [Screen(name=..., frame=..., work_area=..., primary=True), ...]
+win.screens()                        # [Screen(name="Kuycon G32P", frame=..., primary=True, ...), ...]
 win.screen()                         # the display that contains the window center
 win.set_floating(True)               # stay above windows that are not floating
 cid = win.connect("window_move_end", lambda frame: print(frame))
@@ -25,11 +25,64 @@ win.disconnect(cid)
 
 All backends use one convention:
 
-- The origin is the top-left corner of the primary screen, and *y* increases downward.
+- The origin is the top-left corner of the primary display, and *y* increases downward.
 - Units are the toolkit's logical pixels (points on macOS).
 - A window's frame is its outer rectangle, including the title bar.
 
-Cocoa puts the origin at the bottom-left with *y* up; the macosx module converts.
+Cocoa puts the origin at the bottom-left with *y* up, and GDK and X11 put it at the
+top-left of the bounding box of all displays; the package converts both.
+
+A position measured from the primary display changes when the primary display
+changes. To keep a window on one display, measure from that display instead:
+
+```python
+s = win.screen()
+win.get_frame(screen=s)                      # x and y from the top-left corner of s
+win.set_frame(60, 60, 800, 600, screen=s)
+```
+
+## Identifying displays
+
+Each `Screen` has identity fields, read from the operating system:
+
+| Field | Content |
+|---|---|
+| `manufacturer` | the three-letter manufacturer code from the monitor's EDID, e.g. `"GKT"` |
+| `product` | the product code from the EDID |
+| `serial` | the serial number from the EDID, or None; many monitors report none |
+| `system_id` | the display UUID on macOS, the output name on X11 (e.g. `"DP-1"`), the monitor device path on Windows |
+
+`find_screen(saved, screens)` finds a saved display among the attached ones. *saved*
+can be a `Screen` or `screen._asdict()` loaded from JSON:
+
+```python
+import json
+from matplotlib_window_control import find_screen
+
+saved = json.dumps({"screen": s._asdict(), "frame": win.get_frame(screen=s)})
+# ... in a later run:
+data = json.loads(saved)
+s = find_screen(data["screen"], win.screens())
+if s is not None:
+    win.set_frame(*data["frame"], screen=s)
+```
+
+The first rule that matches exactly one display decides:
+
+1. same manufacturer, product and serial number;
+2. same manufacturer, product and `system_id`: for monitors without serial numbers,
+   the same model on the same port;
+3. same manufacturer and product, if one such display is attached;
+4. same name, if one such display is attached.
+
+A display of the same model with a different serial number is a different monitor
+and never matches. Two identical monitors without serial numbers can be told apart
+only by `system_id`; after moving them to other ports, `find_screen` returns None
+for both.
+
+The identity comes from CoreGraphics on macOS, from XRandR on X11, and from the
+Win32 API and the registry on Windows. The X11 and Windows code has not been tested
+yet. On Wayland the fields are None.
 
 ## Events
 
@@ -46,7 +99,7 @@ Each callback receives the window's `Frame` after the change.
 |---|---|---|
 | macosx | `NSWindow`, through `manager._raw_nswindow_ptr` and PyObjC | needs a Matplotlib version with `_raw_nswindow_ptr` |
 | qtagg, qtcairo | `manager.window` (`QMainWindow`) | no positions on Wayland |
-| tkagg, tkcairo | `manager.window` (`Tk`) | `screens()` lists one screen on Linux and Windows; see below for floating |
+| tkagg, tkcairo | `manager.window` (`Tk`) | `screens()` comes from the system on Linux and Windows; see below for floating |
 | wxagg, wxcairo | `manager.frame` (`wx.Frame`) | |
 | gtk3agg, gtk3cairo | `manager.window` (`Gtk.Window`) | no positions on Wayland |
 | gtk4agg, gtk4cairo | `manager.window` (`Gtk.Window`) | no positions, no floating |
