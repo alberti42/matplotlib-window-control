@@ -19,7 +19,10 @@ for key in [k for k in matplotlib.rcParams if k.startswith("keymap.")]:
 import matplotlib.pyplot as plt  # noqa: E402
 from AppKit import NSApplication, NSScreen  # noqa: E402
 
-from matplotlib_window_control import window_control  # noqa: E402
+import json  # noqa: E402
+
+from matplotlib_window_control import find_screen, window_control  # noqa: E402
+from matplotlib_window_control._displays import system_displays  # noqa: E402
 
 TOL = 2
 failures = []
@@ -100,6 +103,36 @@ for name, frame, work_area in reference:
     native = [tuple(n.frame()[0]) + tuple(n.frame()[1]) for n in nswindows]
     check(f"on {name!r}: NSWindow frame", any(close(n, expected) for n in native),
           (native, expected))
+
+# 3. Every display carries the system's identity, matched to the right one.
+system = {d.screen.system_id: d.screen for d in system_displays()}
+screens = win.screens()
+for s in screens:
+    ref = system.get(s.system_id)
+    check(f"identity of {s.name!r}",
+          ref is not None and close(ref.frame, s.frame) and s.name
+          and (s.manufacturer, s.product, s.serial) == (ref.manufacturer, ref.product,
+                                                        ref.serial),
+          (s.system_id, s.manufacturer, s.product, s.serial))
+
+# 4. Frames relative to a display.
+for s in screens:
+    win.set_frame(60, 60, 600, 400, screen=s)
+    plt.pause(0.6)
+    got = win.get_frame(screen=s)
+    check(f"relative to {s.name!r}: get_frame", close(got, (60, 60, 600, 400)), got)
+    x, y = s.frame.x + 60, s.frame.y + 60
+    expected = (x, primary_height - (y + 400), 600, 400)
+    native = [tuple(n.frame()[0]) + tuple(n.frame()[1]) for n in visible_nswindows()]
+    check(f"relative to {s.name!r}: NSWindow frame",
+          any(close(n, expected) for n in native), (native, expected))
+
+# 5. A display saved as JSON is found again.
+for s in screens:
+    saved = json.loads(json.dumps(s._asdict()))
+    found = find_screen(saved, win.screens())
+    check(f"find_screen {s.name!r}", found is not None and found.system_id == s.system_id,
+          found and found.name)
 
 plt.close(fig)
 plt.pause(0.3)
