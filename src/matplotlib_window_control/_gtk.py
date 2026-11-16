@@ -25,6 +25,10 @@ def _quartz(display):
     return "Quartz" in type(display).__name__
 
 
+def _x11(display):
+    return "X11" in type(display).__name__
+
+
 class GtkWindowControl(WindowControl):
     backend = "gtk4" if GTK4 else "gtk3"
 
@@ -32,6 +36,8 @@ class GtkWindowControl(WindowControl):
         super().__init__(manager, **kwargs)
         self.window = manager.window
         self._handlers = []
+        self._pending_size = None
+        self._map_handler = None
 
     def _no_positions(self):
         return GTK4 or _wayland(self.window.get_display())
@@ -82,6 +88,24 @@ class GtkWindowControl(WindowControl):
             dw, dh = f.width - w, f.height - h
             win.resize(int((f.width if width is None else width) - dw),
                        int((f.height if height is None else height) - dh))
+            if _x11(win.get_display()) and not win.get_mapped():
+                self._apply_size_when_mapped(width, height)
+
+    def _apply_size_when_mapped(self, width, height):
+        # On X11, GDK learns the frame extents from the window manager only
+        # when the window is mapped; until then the frame is the client area.
+        # Set the size again at map-event, when the extents are known.
+        def on_map(*args):
+            self.window.disconnect(self._map_handler)
+            self._map_handler = None
+            pending, self._pending_size = self._pending_size, None
+            if pending is not None:
+                self._set_frame(None, None, *pending)
+            return False
+
+        self._pending_size = (width, height)
+        if self._map_handler is None:
+            self._map_handler = self.window.connect("map-event", on_map)
 
     def _screens(self):
         display = self.window.get_display()
@@ -117,20 +141,28 @@ class GtkWindowControl(WindowControl):
             win.realize()
             win.get_window().raise_()
 
-    def get_floating(self):
+    def _check_floating(self):
         if GTK4:
             raise NotSupportedError("GTK 4 has no keep-above API")
-        if _quartz(self.window.get_display()):
-            # GDK on macOS applies keep-above but does not report the ABOVE
-            # state; return the value last set.
+        if _wayland(self.window.get_display()):
+            # Wayland has no keep-above request: GDK 3 ignores set_keep_above()
+            # there and never reports the ABOVE state.
+            raise NotSupportedError("Wayland does not let clients keep a window above")
+
+    def get_floating(self):
+        self._check_floating()
+        display = self.window.get_display()
+        if _quartz(display) or _x11(display):
+            # GDK 3 on macOS and on X11 applies keep-above but does not report
+            # the ABOVE state (on X11 under Mutter, _NET_WM_STATE_ABOVE is set
+            # while Gdk.WindowState.ABOVE stays clear); return the value last set.
             return getattr(self, "_floating", False)
         gdk_window = self.window.get_window()
         return (gdk_window is not None
                 and bool(gdk_window.get_state() & Gdk.WindowState.ABOVE))
 
     def set_floating(self, floating):
-        if GTK4:
-            raise NotSupportedError("GTK 4 has no keep-above API")
+        self._check_floating()
         self._floating = bool(floating)
         self.window.set_keep_above(self._floating)
 
