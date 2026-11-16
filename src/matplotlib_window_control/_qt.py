@@ -60,6 +60,9 @@ class QtWindowControl(WindowControl):
     def _wayland(self):
         return QtGui.QGuiApplication.platformName() == "wayland"
 
+    def _x11_client(self):
+        return QtGui.QGuiApplication.platformName() == "xcb"
+
     def _create_native_window(self):
         # Qt knows the size of the window decorations only once the native
         # window exists. show() creates it; winId() creates it without showing.

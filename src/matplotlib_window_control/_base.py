@@ -189,11 +189,15 @@ class WindowControl:
             y = None if y is None else y + oy
         self._set_frame(x, y, width, height)
 
+    def _x11_client(self) -> bool:
+        """Return True if the toolkit draws the window through an X server."""
+        return False
+
     def _identified_screens(self):
         """Return `_screens` with the identity fields from the operating system."""
         from ._displays import attach_identity, system_displays
 
-        return attach_identity(self._screens(), system_displays())
+        return attach_identity(self._screens(), system_displays(x11=self._x11_client()))
 
     def screens(self) -> list[Screen]:
         """Return the displays known to the toolkit; the primary one first.

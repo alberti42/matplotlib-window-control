@@ -16,7 +16,7 @@ from matplotlib_window_control._base import _backend_family
 @pytest.fixture(autouse=True)
 def no_system_displays(monkeypatch):
     # Keep the real displays of the machine running the tests out of the fakes.
-    monkeypatch.setattr(_displays, "system_displays", lambda: [])
+    monkeypatch.setattr(_displays, "system_displays", lambda x11=False: [])
 
 
 class FakeTimer:
@@ -228,6 +228,22 @@ def test_frame_relative_to_screen_without_positions():
 def test_screen_with_shifted_coordinates():
     control = FakeControl(frame=Frame(60, 60, 700, 500), screens=GDK_SCREENS)
     assert control.screen().name == "left"
+
+
+@pytest.mark.parametrize("x11_client, system_id", [(False, None), (True, "eDP-1")])
+def test_x11_client_reads_x_server_displays(monkeypatch, x11_client, system_id):
+    # Qt and GDK under XWayland at 150 % scaling measure the display as
+    # 2560 x 1440; XRandR measures it as 5120 x 2880 and names the output.
+    def system_displays(x11=False):
+        if not x11:  # A Wayland session.
+            return []
+        s = screen("eDP-1", 0, 0, 5120, 2880, primary=True)
+        return [_displays.SystemDisplay(s._replace(system_id="eDP-1"), ("eDP-1",))]
+
+    monkeypatch.setattr(_displays, "system_displays", system_displays)
+    control = FakeControl(screens=[screen("", 0, 0, 2560, 1440, primary=True)])
+    monkeypatch.setattr(control, "_x11_client", lambda: x11_client)
+    assert [s.system_id for s in control.screens()] == [system_id]
 
 
 # -- live events ---------------------------------------------------------------

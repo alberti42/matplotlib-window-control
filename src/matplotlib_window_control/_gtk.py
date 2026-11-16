@@ -39,6 +39,9 @@ class GtkWindowControl(WindowControl):
         self._pending_size = None
         self._map_handler = None
 
+    def _x11_client(self):
+        return _x11(self.window.get_display())
+
     def _no_positions(self):
         return GTK4 or _wayland(self.window.get_display())
 

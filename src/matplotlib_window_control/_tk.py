@@ -94,6 +94,9 @@ class TkWindowControl(WindowControl):
                 _x11_connections[name] = None
         return _x11_connections[name]
 
+    def _x11_client(self):
+        return self._x11() is not None
+
     def _extents(self):
         """Return the visible decoration sizes (left, right, top, bottom), or None.
 
@@ -176,7 +179,7 @@ class TkWindowControl(WindowControl):
         # pixels are Tk's pixels there. Under XWayland, Tk is an X client and
         # XRandR gives the displays in Tk's pixels.
         from ._displays import system_displays
-        displays = system_displays(x11=self._x11() is not None)
+        displays = system_displays(x11=self._x11_client())
         if displays:
             return [d.screen for d in displays]
         # Tk reports one screen: on X11 the whole X screen, on Windows the

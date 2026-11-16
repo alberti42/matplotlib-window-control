@@ -362,8 +362,8 @@ def system_displays(x11=False):
 
     The lookups run once per call; a failure gives a warning, once per kind,
     and an empty list, so that a broken lookup never breaks window control.
-    With *x11*, ask the X server even in a Wayland session: an X client such
-    as Tk under XWayland measures in the X server's pixels.
+    With *x11*, ask the X server even in a Wayland session, for a toolkit that
+    runs under XWayland. XWayland gives the output names, but no EDID.
     """
     try:
         if sys.platform == "darwin":
