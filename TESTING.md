@@ -11,8 +11,9 @@ All automated tests have run on two machines:
   2160 at 150 % scaling), Python 3.13, Matplotlib 3.11.2, PySide6 6.12, Tk 9.0,
   GTK 3.24 and GTK 4.24; no wxPython. `tests/gui_check.py` passes for Qt, GTK 3 and
   GTK 4 as Wayland clients, for Tk under XWayland, and for Qt (`QT_QPA_PLATFORM=xcb`)
-  and GTK 3 (`GDK_BACKEND=x11`) under XWayland. Floating on Qt under Wayland was
-  checked by eye: Mutter ignores it.
+  and GTK 3 (`GDK_BACKEND=x11`) under XWayland. Under XWayland, `screens()` on Tk, Qt
+  and GTK 3 has the output name from XRandR as `system_id`. Floating on Qt under
+  Wayland was checked by eye: Mutter ignores it.
 
 | Test | Covers |
 |---|---|
@@ -38,7 +39,6 @@ These cases have not been run. Each row says what could break and how to check i
 |---|---|---|
 | Linux, X11 server | XWayland was tested, a real X server was not: several outputs, the shift from the bounding-box corner to the primary output, EDID from XRandR (XWayland gives none), window managers other than Mutter | run `tests/gui_check.py` for each backend in an X11 session; print `window_control(fig).screens()` and compare with `xrandr --props` |
 | Linux, Wayland with several displays, or KDE | the display list and the `primary` flag (GDK on Wayland names no primary display); KWin may treat sizes and decorations differently from Mutter | run `tests/gui_check.py` and print `screens()` |
-| Qt and GTK as X clients under XWayland | `screens()` has no identity, because `system_displays()` reads XRandR in a Wayland session only for Tk | print `screens()` with `QT_QPA_PLATFORM=xcb` or `GDK_BACKEND=x11` |
 | Windows | `EnumDisplayMonitors` and the registry EDID lookup; displays with negative coordinates; the device name `\\.\DISPLAY1` matching Qt and wx screen names | run `tests/gui_check.py`; print `screens()` and compare with the display settings |
 | Display scaling on X11 and Windows | toolkits that report logical pixels while the system reports physical ones; matching assumes one scale for all displays, so mixed scaling (e.g. 100 % and 150 %) can leave displays without identity | print `screens()` with mixed scaling and check the identity fields |
 | GTK 3 on X11 | `move()` and `get_position()` relative to the frame under window managers other than Mutter | `tests/gui_check.py gtk3agg` under two or three window managers |

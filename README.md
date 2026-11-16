@@ -84,8 +84,9 @@ for both.
 
 The identity comes from CoreGraphics on macOS, from XRandR on X11, and from the
 Win32 API and the registry on Windows. The Windows code has not been tested yet. On
-Wayland the fields are None, except on Tk: Tk runs under XWayland, and XRandR gives the
-output name (`name` and `system_id`), but no EDID.
+Wayland the fields are None. Under XWayland (Tk always; Qt and GTK 3 when set to run there,
+see [Positions on Wayland](#positions-on-wayland)), XRandR gives the output name
+(`name` and `system_id`), but no EDID.
 
 ## Events
 
