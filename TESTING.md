@@ -2,9 +2,17 @@
 
 ## What the tests cover
 
-All automated tests have run on macOS only, on one machine: a Kuycon G32P and an
-iPad as a second display (Sidecar), with Python 3.13, the Matplotlib fork with
-`_raw_nswindow_ptr`, PySide6, Tk 9.0, wxPython 4.3.2, GTK 3.24 and GTK 4.24.
+All automated tests have run on two machines:
+
+- macOS, with a Kuycon G32P and an iPad as a second display (Sidecar), Python 3.13,
+  the Matplotlib fork with `_raw_nswindow_ptr`, PySide6, Tk 9.0, wxPython 4.3.2,
+  GTK 3.24 and GTK 4.24.
+- Fedora 45 with GNOME 51 on Wayland (2026-11-15), one display (an iMac panel, 3840 ×
+  2160 at 150 % scaling), Python 3.13, Matplotlib 3.11.2, PySide6 6.12, Tk 9.0,
+  GTK 3.24 and GTK 4.24; no wxPython. `tests/gui_check.py` passes for Qt, GTK 3 and
+  GTK 4 as Wayland clients, for Tk under XWayland, and for Qt (`QT_QPA_PLATFORM=xcb`)
+  and GTK 3 (`GDK_BACKEND=x11`) under XWayland. Floating on Qt under Wayland was
+  checked by eye: Mutter ignores it.
 
 | Test | Covers |
 |---|---|
@@ -28,12 +36,13 @@ These cases have not been run. Each row says what could break and how to check i
 
 | Case | What could break | How to check |
 |---|---|---|
-| Linux, X11 | the shift from the bounding-box corner to the primary output; the XRandR ctypes structures; `system_id` as the output name; Qt's screen names matching output names | run `tests/gui_check.py` for each backend; print `window_control(fig).screens()` and compare with `xrandr --props` |
-| Linux, Wayland | positions should be None and setting one should raise `NotSupportedError`; the identity fields should be None | run `tests/gui_check.py` under a Wayland session (Qt, GTK 3, GTK 4) |
+| Linux, X11 server | XWayland was tested, a real X server was not: several outputs, the shift from the bounding-box corner to the primary output, EDID from XRandR (XWayland gives none), window managers other than Mutter | run `tests/gui_check.py` for each backend in an X11 session; print `window_control(fig).screens()` and compare with `xrandr --props` |
+| Linux, Wayland with several displays, or KDE | the display list and the `primary` flag (GDK on Wayland names no primary display); KWin may treat sizes and decorations differently from Mutter | run `tests/gui_check.py` and print `screens()` |
+| Qt and GTK as X clients under XWayland | `screens()` has no identity, because `system_displays()` reads XRandR in a Wayland session only for Tk | print `screens()` with `QT_QPA_PLATFORM=xcb` or `GDK_BACKEND=x11` |
 | Windows | `EnumDisplayMonitors` and the registry EDID lookup; displays with negative coordinates; the device name `\\.\DISPLAY1` matching Qt and wx screen names | run `tests/gui_check.py`; print `screens()` and compare with the display settings |
 | Display scaling on X11 and Windows | toolkits that report logical pixels while the system reports physical ones; matching assumes one scale for all displays, so mixed scaling (e.g. 100 % and 150 %) can leave displays without identity | print `screens()` with mixed scaling and check the identity fields |
-| GTK 3 on X11 | `move()` and `get_position()` relative to the frame under different window managers | `tests/gui_check.py gtk3agg` under two or three window managers |
-| Tk on Linux | `wm geometry` and the decoration sizes under different window managers | `tests/gui_check.py tkagg` |
+| GTK 3 on X11 | `move()` and `get_position()` relative to the frame under window managers other than Mutter | `tests/gui_check.py gtk3agg` under two or three window managers |
+| Tk on Linux | `_NET_FRAME_EXTENTS` and `wm geometry +x+y` under window managers other than Mutter; window managers that do not set `_NET_FRAME_EXTENTS` fall back to the older method | `tests/gui_check.py tkagg` |
 
 ### Displays
 
@@ -52,7 +61,7 @@ These cases have not been run. Each row says what could break and how to check i
 |---|---|---|
 | Dragging and resizing with the mouse | end events: one per gesture, and an early end event when the mouse holds still for longer than `end_delay` mid-drag | connect all four events and drag by hand |
 | IPython with `%matplotlib` | windows shown before `set_frame()`; the `plt.ioff()` recipe in the README | run the recipe in IPython |
-| Floating on Linux and Windows | `-topmost`, `STAY_ON_TOP`, `WindowStaysOnTopHint` and `set_keep_above()` there; the Tk `manager.show` wrapper | `tests/gui_check.py` checks the reported state only; check the stacking by eye |
+| Floating on X11 and Windows | `-topmost`, `STAY_ON_TOP`, `WindowStaysOnTopHint` and `set_keep_above()` there; the Tk `manager.show` wrapper. On Mutter under XWayland the window manager sets `_NET_WM_STATE_ABOVE` for GTK 3; the stacking was not checked by eye | `tests/gui_check.py` checks the reported state only; check the stacking by eye |
 | `raise_window()` on Linux and Windows | raising above other applications without focus; Windows' foreground restrictions; Wayland's activation protocol; GTK 4 taking focus | put another application's window over the figure, call `raise_window()` and `raise_window(with_focus=True)`, check by eye |
 | GTK on macOS with two windows of the same title | `raise_window()` finds the `NSWindow` by title; with duplicate titles it falls back to the GTK calls, which do not raise above other applications | give two figures the same title and call `raise_window()` |
 

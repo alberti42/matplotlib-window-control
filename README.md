@@ -83,8 +83,9 @@ only by `system_id`; after moving them to other ports, `find_screen` returns Non
 for both.
 
 The identity comes from CoreGraphics on macOS, from XRandR on X11, and from the
-Win32 API and the registry on Windows. The X11 and Windows code has not been tested
-yet. On Wayland the fields are None.
+Win32 API and the registry on Windows. The Windows code has not been tested yet. On
+Wayland the fields are None, except on Tk: Tk runs under XWayland, and XRandR gives the
+output name (`name` and `system_id`), but no EDID.
 
 ## Events
 
@@ -100,10 +101,10 @@ Each callback receives the window's `Frame` after the change.
 | Backend | Window object | Limits |
 |---|---|---|
 | macosx | `NSWindow`, through `manager._raw_nswindow_ptr` and PyObjC | needs a Matplotlib version with `_raw_nswindow_ptr` |
-| qtagg, qtcairo | `manager.window` (`QMainWindow`) | no positions on Wayland |
-| tkagg, tkcairo | `manager.window` (`Tk`) | `screens()` comes from the system on Linux and Windows; see below for floating |
+| qtagg, qtcairo | `manager.window` (`QMainWindow`) | no positions and no floating on Wayland |
+| tkagg, tkcairo | `manager.window` (`Tk`) | `screens()` comes from the system on Linux and Windows; runs under XWayland in a Wayland session; see below for floating |
 | wxagg, wxcairo | `manager.frame` (`wx.Frame`) | |
-| gtk3agg, gtk3cairo | `manager.window` (`Gtk.Window`) | no positions on Wayland |
+| gtk3agg, gtk3cairo | `manager.window` (`Gtk.Window`) | no positions and no floating on Wayland |
 | gtk4agg, gtk4cairo | `manager.window` (`Gtk.Window`) | no positions, no floating |
 
 Where the toolkit cannot report a position, `Frame.x` and `Frame.y` are None, and
@@ -111,9 +112,12 @@ setting a position raises `NotSupportedError`.
 
 ## Floating windows
 
-A floating window stays above windows that are not floating. Each toolkit picks its
-own window level for floating, so floating windows of different backends do not
-stack as equals. On macOS, the `NSWindow` levels are:
+A floating window stays above windows that are not floating. Wayland gives clients no
+way to keep a window above, so on Wayland `set_floating()` and `get_floating()` raise
+`NotSupportedError` on Qt and GTK; GTK 4 has no keep-above call anywhere.
+
+Each toolkit picks its own window level for floating, so floating windows of different
+backends do not stack as equals. On macOS, the `NSWindow` levels are:
 
 | Backend | Level |
 |---|---|
