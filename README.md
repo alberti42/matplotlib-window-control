@@ -110,6 +110,36 @@ Each callback receives the window's `Frame` after the change.
 Where the toolkit cannot report a position, `Frame.x` and `Frame.y` are None, and
 setting a position raises `NotSupportedError`.
 
+### Positions on Wayland
+
+Wayland gives an application no request to place its window and no way to read
+where the window is: the compositor places each new window, and the user moves it.
+Qt and GTK, which run as Wayland clients by default, therefore have no positions on
+Wayland. Size works.
+
+Under XWayland, the X server that Wayland sessions run alongside, positions work. Tk
+always runs under XWayland. Qt and GTK 3 run under XWayland when an environment
+variable is set before the toolkit starts:
+
+| Toolkit | Variable |
+|---|---|
+| Qt | `QT_QPA_PLATFORM=xcb` |
+| GTK 3 | `GDK_BACKEND=x11` |
+
+Set it in the shell, or at the top of the script, before Matplotlib loads the backend:
+
+```python
+import os
+os.environ["QT_QPA_PLATFORM"] = "xcb"
+
+import matplotlib.pyplot as plt
+```
+
+This package does not set the variable itself: the toolkit reads it when it starts,
+and choosing the backend is left to the application. GTK 4 has no position calls,
+also under XWayland. With fractional display scaling, check whether the text of
+XWayland windows is as sharp as that of Wayland windows; this was not checked.
+
 ## Floating windows
 
 A floating window stays above windows that are not floating. Wayland gives clients no
