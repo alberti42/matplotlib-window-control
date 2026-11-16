@@ -18,6 +18,7 @@ def _enum(owner, scope, name):
 _STAYS_ON_TOP = _enum(QtCore.Qt, "WindowType", "WindowStaysOnTopHint")
 _MOVE = _enum(QtCore.QEvent, "Type", "Move")
 _RESIZE = _enum(QtCore.QEvent, "Type", "Resize")
+_SHOW = _enum(QtCore.QEvent, "Type", "Show")
 
 
 def _frame(rect):
@@ -35,6 +36,17 @@ class _GeometryFilter(QtCore.QObject):
         return False  # Let Qt and Matplotlib handle the event as usual.
 
 
+class _ShowFilter(QtCore.QObject):
+    def __init__(self, callback):
+        super().__init__()
+        self._callback = callback
+
+    def eventFilter(self, obj, event):
+        if event.type() == _SHOW:
+            QtCore.QTimer.singleShot(0, self._callback)
+        return False
+
+
 class QtWindowControl(WindowControl):
     backend = "qt"
 
@@ -42,6 +54,8 @@ class QtWindowControl(WindowControl):
         super().__init__(manager, **kwargs)
         self.window = manager.window
         self._filter = None
+        self._show_filter = None
+        self._pending_size = None
 
     def _wayland(self):
         return QtGui.QGuiApplication.platformName() == "wayland"
@@ -51,12 +65,25 @@ class QtWindowControl(WindowControl):
         # window exists. show() creates it; winId() creates it without showing.
         self.window.winId()
 
-    def _get_frame(self):
+    def _decorations(self):
+        """Return the total width and height of the decorations."""
+        win = self.window
         self._create_native_window()
-        f = _frame(self.window.frameGeometry())
+        if self._wayland():
+            # On Wayland, QWidget.frameGeometry() leaves out the decorations
+            # that Qt draws itself until the window is first resized;
+            # QWindow.frameMargins() has them as soon as the window is shown.
+            m = win.windowHandle().frameMargins()
+            return m.left() + m.right(), m.top() + m.bottom()
+        fg, g = win.frameGeometry(), win.geometry()
+        return fg.width() - g.width(), fg.height() - g.height()
+
+    def _get_frame(self):
+        dw, dh = self._decorations()
         if self._wayland():  # Qt reports (0, 0) on Wayland.
-            return f._replace(x=None, y=None)
-        return f
+            g = self.window.geometry()
+            return Frame(None, None, g.width() + dw, g.height() + dh)
+        return _frame(self.window.frameGeometry())
 
     def _set_frame(self, x, y, width, height):
         win = self.window
@@ -68,10 +95,29 @@ class QtWindowControl(WindowControl):
             win.move(int(f.x() if x is None else x), int(f.y() if y is None else y))
         if width is not None or height is not None:
             # resize() sets the size without decorations.
-            fg, g = win.frameGeometry(), win.geometry()
-            dw, dh = fg.width() - g.width(), fg.height() - g.height()
-            win.resize(int((fg.width() if width is None else width) - dw),
-                       int((fg.height() if height is None else height) - dh))
+            dw, dh = self._decorations()
+            g = win.geometry()
+            win.resize(int(g.width() if width is None else width - dw),
+                       int(g.height() if height is None else height - dh))
+            if self._wayland() and not win.isVisible():
+                self._apply_size_when_shown(width, height)
+
+    def _apply_size_when_shown(self, width, height):
+        # QtWayland creates the decorations when the window is shown, and
+        # QWindow.frameMargins() reports them one event-loop turn after the
+        # Show event. Set the size again then.
+        def apply():
+            win.removeEventFilter(self._show_filter)
+            self._show_filter = None
+            if self._pending_size is not None:
+                self._set_frame(None, None, *self._pending_size)
+                self._pending_size = None
+
+        win = self.window
+        self._pending_size = (width, height)
+        if self._show_filter is None:
+            self._show_filter = _ShowFilter(apply)
+            win.installEventFilter(self._show_filter)
 
     def _screens(self):
         primary = QtGui.QGuiApplication.primaryScreen()
@@ -90,10 +136,19 @@ class QtWindowControl(WindowControl):
         if with_focus:
             self.window.activateWindow()
 
+    def _check_floating(self):
+        if self._wayland():
+            # Wayland has no keep-above request; QtWayland keeps the
+            # WindowStaysOnTopHint flag, and reports it, but Mutter does not
+            # keep the window above (checked by eye on GNOME 51).
+            raise NotSupportedError("Wayland does not let clients keep a window above")
+
     def get_floating(self):
+        self._check_floating()
         return bool(self.window.windowFlags() & _STAYS_ON_TOP)
 
     def set_floating(self, floating):
+        self._check_floating()
         visible = self.window.isVisible()
         self.window.setWindowFlag(_STAYS_ON_TOP, bool(floating))
         if visible:  # Changing the window flags hides the window.
