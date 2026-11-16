@@ -137,8 +137,12 @@ import matplotlib.pyplot as plt
 
 This package does not set the variable itself: the toolkit reads it when it starts,
 and choosing the backend is left to the application. GTK 4 has no position calls,
-also under XWayland. With fractional display scaling, check whether the text of
-XWayland windows is as sharp as that of Wayland windows; this was not checked.
+also under XWayland.
+
+On GNOME 51 with 150 % scaling, Qt and GTK 3 windows under XWayland look as sharp as,
+and have the same size as, their Wayland windows: the toolkits draw at scale 2 and
+GNOME shrinks the result. Under XWayland, GNOME draws the title bar; on Wayland, Qt
+and GTK 3 draw their own.
 
 ## Floating windows
 
