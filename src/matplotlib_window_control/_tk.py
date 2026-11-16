@@ -173,9 +173,10 @@ class TkWindowControl(WindowControl):
             from ._macos import cocoa_screens
             return cocoa_screens()
         # Tk has no list of displays; ask the system (X11, Windows), whose
-        # pixels are Tk's pixels there.
+        # pixels are Tk's pixels there. Under XWayland, Tk is an X client and
+        # XRandR gives the displays in Tk's pixels.
         from ._displays import system_displays
-        displays = system_displays()
+        displays = system_displays(x11=self._x11() is not None)
         if displays:
             return [d.screen for d in displays]
         # Tk reports one screen: on X11 the whole X screen, on Windows the

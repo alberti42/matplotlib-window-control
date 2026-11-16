@@ -357,11 +357,13 @@ def _windows_displays():
 _warned = set()
 
 
-def system_displays():
+def system_displays(x11=False):
     """Return the displays as the operating system reports them, or [].
 
     The lookups run once per call; a failure gives a warning, once per kind,
     and an empty list, so that a broken lookup never breaks window control.
+    With *x11*, ask the X server even in a Wayland session: an X client such
+    as Tk under XWayland measures in the X server's pixels.
     """
     try:
         if sys.platform == "darwin":
@@ -369,7 +371,7 @@ def system_displays():
         if sys.platform == "win32":
             return _windows_displays()
         if sys.platform.startswith("linux") and os.environ.get("DISPLAY") \
-                and not os.environ.get("WAYLAND_DISPLAY"):
+                and (x11 or not os.environ.get("WAYLAND_DISPLAY")):
             return _x11_displays()
     except Exception as e:  # noqa: BLE001 - system-specific, best effort.
         if sys.platform not in _warned:
